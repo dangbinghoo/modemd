@@ -1,0 +1,11 @@
+{
+	"authors": [
+		"dangbinghoo"
+	],
+	"copyright": "Copyright © 2021, dangbinghoo",
+	"description": "Ymodem protocol for D",
+	"license": "LGPL-3.0",
+	"targetType": "library",
+	"targetName": "modemd",
+	"name": "modemd"
+}

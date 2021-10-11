@@ -1,0 +1,12 @@
+{
+	"authors": [
+		"dangbinghoo"
+	],
+	"copyright": "Copyright © 2021, dangbinghoo",
+	"description": "Y-modem receive example",
+	"license": "LGPL-3.0",
+	"name": "ymodemreceive",
+	"dependencies": {
+		"modemd": {"path": "../.."}
+	}
+}
