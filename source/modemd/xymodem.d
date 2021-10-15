@@ -10,6 +10,10 @@ module modemd.xymodem;
 
 import core.stdc.stdint;
 import std.stdio;
+import std.format;
+
+import std.experimental.logger;
+private FileLogger logg;
 
 /// Protol Magic Signs
 private enum ProtolSigns {
@@ -38,7 +42,7 @@ private enum CRCType {
 
 private enum {
     MaxRetries = 10,       /// Max transimit retries.
-    MaxRetriesCRC = 5,     /// Max transimit retries when using CRC.
+    MaxRetriesCRC = 20,     /// Max transimit retries when using CRC.
     MaxCanBeforeAbourt = 5 /// Max wait before abort.
 }
 
@@ -106,7 +110,7 @@ private immutable char[][] blockNACK = [
 ];
 
 /// external Call-backs
-alias modemGetData = int function(in ubyte[] buff, size_t len, long timeout);
+alias modemGetData = int function(ubyte* buff, size_t len, long timeout);
 alias modemPutChar = void function(ubyte c);
 alias modemFlush = void function();
 
@@ -163,6 +167,9 @@ struct XYModem {
         this.getdata = getdata;
         this.putchar = putchar;
         this.flush = flush;
+
+        logg = new FileLogger("/tmp/xymodem-d.log");
+
         return RetCode.MD_OK;
     }
 
@@ -208,13 +215,13 @@ struct XYModem {
         ubyte[1] hdr; ubyte[2] seqs, crcs;
         int crc = 0;
         bool hdr_found = 0;
-        
+
         while (!hdr_found) {
-            rc = this.getdata(hdr, 1, timeout);
+            rc = this.getdata(hdr.ptr, 1, timeout);
             if (rc < 0)
                 goto outerr;
             //timeout check
-
+            logg.log(format("0x%x(%c) -> %d\n", hdr[0], cast(char)hdr[0], rc));
             switch (hdr[0]) {
                 case ProtolSigns.SOH:
                     data_len = 128;
@@ -241,25 +248,25 @@ struct XYModem {
         }
 
         blk.seq = 0;
-        rc = this.getdata(seqs, 2, timeout);
+        rc = this.getdata(seqs.ptr, 2, timeout);
         if (rc < 0)
             goto outerr;
         blk.seq = seqs[0];
         if (255 -seqs[0] != seqs[1])
             return RetCode.MD_ERR_BAD_MSG;
 
-        rc = this.getdata(blk.buf, data_len, timeout);
+        rc = this.getdata(blk.buf.ptr, data_len, timeout);
         if (rc < 0)
             goto outerr;
         blk.len = rc;
 
         switch (this.crctype) {
             case CRCType.Add8:
-                rc = this.getdata(crcs, 1, timeout);
+                rc = this.getdata(crcs.ptr, 1, timeout);
                 crc = crcs[0];
                 break;
             case CRCType.CRC16:
-                rc = this.getdata(crcs, 2, timeout);
+                rc = this.getdata(crcs.ptr, 2, timeout);
                 crc = (crcs[0] << 8) + crcs[1];
                 break;
             case CRCType.None:
@@ -400,6 +407,7 @@ struct XYModem {
 
         while (again) {
             switch (this.state) {
+                logg.log("current status is ", this.state);
                 case State.GetFileName:
                     crc_tries = 0;
                     rc = xy_await_header();
@@ -418,6 +426,7 @@ struct XYModem {
                     goto outs;
                 case State.NegociateCRC:
                     invite = inviteFileBody[this.proto][this.crctype];
+                    logg.log("invite is ", invite);
                     this.nextblk = 1;
                     if (crc_tries++ > MaxRetriesCRC)
                         this.crctype = CRCType.Add8;
@@ -425,6 +434,7 @@ struct XYModem {
                     goto case; /* fallthrough */
                 case State.ReceiveBody:
                     rc = xy_read_block(blk, 3);
+                    logg.log("State.ReceiveBody rc is ", rc);
                     if (rc > 0) {
                         rc = xy_check_blk_seq(blk, rc);
                     }
@@ -437,6 +447,7 @@ struct XYModem {
                 continue;
             
             switch (rc) {
+                logg.log("rc RetCode = ", rc);
                 case RetCode.MD_ERR_CONN_ABORTED:
                     goto fail;
                 case RetCode.MD_ERR_TIME_OUT:
